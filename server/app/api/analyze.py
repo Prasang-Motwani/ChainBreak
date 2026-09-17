@@ -13,7 +13,43 @@ from app.services.repository import parse_github_url
 
 CRITICAL_CVSS_THRESHOLD = 9.0
 
+# Monorepos commonly split into a client/server (or frontend/backend, ...)
+# layout with no package.json at the root -- e.g. exactly this project's own
+# client/ + server/ structure. Checked in this priority order after the root
+# comes up empty; every manifest found (not just the first) is analyzed and
+# merged, so a client/server split repo gets its full dependency picture.
+_COMMON_MANIFEST_DIRS = ["client", "frontend", "web", "app", "ui", "server", "backend", "api"]
+_MAX_DIRS_TO_SCAN = 10
+
 router = APIRouter(prefix="/api")
+
+
+async def _find_manifests(owner: str, name: str, branch: str) -> list[tuple[str, str]]:
+    """Returns [(subdir_path, package_json_content), ...] for every
+    package.json found in the repo root or a monorepo-style subdirectory.
+    subdir_path is "" for the root.
+    """
+    manifests: list[tuple[str, str]] = []
+
+    root_content = await github_service.get_file_content(owner, name, "package.json", branch)
+    if root_content is not None:
+        manifests.append(("", root_content))
+
+    listing = await github_service.list_directory(owner, name, "", branch)
+    dir_names = [item["name"] for item in listing if item.get("type") == "dir"] if listing else []
+
+    candidates = [d for d in _COMMON_MANIFEST_DIRS if d in dir_names]
+    candidates += [d for d in dir_names if d not in candidates]
+    candidates = candidates[:_MAX_DIRS_TO_SCAN]
+
+    contents = await asyncio.gather(
+        *[github_service.get_file_content(owner, name, f"{d}/package.json", branch) for d in candidates]
+    )
+    for dir_name, content in zip(candidates, contents):
+        if content is not None:
+            manifests.append((dir_name, content))
+
+    return manifests
 
 
 @router.post("/analyze", response_model=AnalyzeResponse)
@@ -23,18 +59,41 @@ async def analyze_repository(payload: AnalyzeRequest) -> AnalyzeResponse:
     repo_meta = await github_service.get_repository(owner, name)
     default_branch = repo_meta.get("default_branch") or "main"
 
-    package_json_content = await github_service.get_file_content(owner, name, "package.json", default_branch)
-    if package_json_content is None:
+    manifests = await _find_manifests(owner, name, default_branch)
+    if not manifests:
         raise HTTPException(
             status_code=422,
-            detail="No package.json found in this repository. Only npm repositories are supported right now.",
+            detail=(
+                "No package.json found at the repository root or in common subdirectories "
+                f"({', '.join(_COMMON_MANIFEST_DIRS)}). Only npm repositories are supported right now."
+            ),
         )
 
-    package_json = npm_service.parse_package_json(package_json_content)
-    direct_deps = npm_service.extract_direct_dependencies(package_json)
+    direct_deps: dict[str, str] = {}
+    parsed_any = False
+    for _, content in manifests:
+        try:
+            package_json = npm_service.parse_package_json(content)
+        except HTTPException:
+            continue  # skip a malformed manifest rather than failing repos with other valid ones
+        parsed_any = True
+        direct_deps.update(npm_service.extract_direct_dependencies(package_json))
 
-    lockfile_content = await github_service.get_file_content(owner, name, "package-lock.json", default_branch)
-    locked_versions = npm_service.parse_lockfile_versions(lockfile_content) if lockfile_content else {}
+    if not parsed_any:
+        raise HTTPException(status_code=422, detail="package.json found but could not be parsed as valid JSON.")
+
+    lockfile_contents = await asyncio.gather(
+        *[
+            github_service.get_file_content(
+                owner, name, f"{dir_path}/package-lock.json" if dir_path else "package-lock.json", default_branch
+            )
+            for dir_path, _ in manifests
+        ]
+    )
+    locked_versions: dict[str, str] = {}
+    for content in lockfile_contents:
+        if content:
+            locked_versions.update(npm_service.parse_lockfile_versions(content))
 
     dependencies: list[Dependency] = []
     for dep_name, version_range in direct_deps.items():

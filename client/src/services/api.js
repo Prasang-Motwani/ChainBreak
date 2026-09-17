@@ -22,6 +22,14 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Thrown when the backend was reached and gave a real, meaningful answer
+// about this specific repository (unsupported ecosystem, not found, no
+// dependencies, ...). These must surface to the user, not be silently
+// swapped for demo data -- only a genuine network/connectivity failure
+// (backend not running, CORS misconfigured, ...) should fall back to the
+// offline demo.
+export class AnalysisError extends Error {}
+
 function isCritical(dep) {
   return dep.max_cvss >= 9.0 || dep.risk_profile?.label === "HIGH";
 }
@@ -88,11 +96,11 @@ async function analyzeRealRepository(repoUrl) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail ?? `Analyze request failed (${res.status})`);
+    throw new AnalysisError(body.detail ?? `Analyze request failed (${res.status})`);
   }
   const data = await res.json();
   if (!data.graph?.nodes?.length || !data.packages?.length) {
-    throw new Error("Repository has no resolvable dependencies.");
+    throw new AnalysisError("This repository has no resolvable dependencies to analyze.");
   }
 
   const appNode = { id: data.repository.name, name: data.repository.name, kind: "app", isRoot: true };
@@ -120,7 +128,10 @@ export async function analyzeRepository(repoUrl) {
   try {
     return await analyzeRealRepository(repoUrl);
   } catch (err) {
-    console.warn(`ChainBreak API unavailable or repo unsupported, using demo data: ${err.message}`);
+    if (err instanceof AnalysisError) {
+      throw err; // a real, specific answer about this repo -- must reach the user
+    }
+    console.warn(`ChainBreak API unreachable, using demo data: ${err.message}`);
     await delay(400);
     return {
       repository: { ...mockRepository, url: repoUrl || mockRepository.url },

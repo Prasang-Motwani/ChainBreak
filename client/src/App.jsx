@@ -9,9 +9,11 @@ export default function App() {
   const [stage, setStage] = useState("input");
   const [repoUrl, setRepoUrl] = useState("");
   const [analysis, setAnalysis] = useState(null);
+  const [analysisError, setAnalysisError] = useState("");
 
   const handleAnalyze = async (url) => {
     setRepoUrl(url);
+    setAnalysisError("");
     setStage("analyzing");
 
     try {
@@ -26,10 +28,11 @@ export default function App() {
       setAnalysis({ repository: data.repository, packages: packagesById, edges: data.edges });
       setStage("dashboard");
     } catch (err) {
-      // analyzeRepository() is expected to fall back to mock data rather
-      // than throw, but never leave the user stuck on the loading screen
-      // if that contract is ever violated.
-      console.error("Analysis failed unexpectedly:", err);
+      // AnalysisError means the backend gave a real, specific answer about
+      // this repo (unsupported/not found/no dependencies) -- surface it
+      // rather than silently substituting unrelated demo data. Any other
+      // error is unexpected; still never leave the user stuck loading.
+      setAnalysisError(err.message || "Analysis failed unexpectedly.");
       setStage("input");
     }
   };
@@ -40,7 +43,7 @@ export default function App() {
     setRepoUrl("");
   };
 
-  if (stage === "input") return <RepositoryInput onAnalyze={handleAnalyze} />;
+  if (stage === "input") return <RepositoryInput onAnalyze={handleAnalyze} serverError={analysisError} />;
   if (stage === "analyzing") return <AnalysisLoader repoUrl={repoUrl} />;
 
   return (

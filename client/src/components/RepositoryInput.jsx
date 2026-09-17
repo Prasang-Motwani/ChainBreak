@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function RepositoryInput({ onAnalyze }) {
+export default function RepositoryInput({ onAnalyze, serverError }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
 
@@ -25,6 +25,8 @@ export default function RepositoryInput({ onAnalyze }) {
     setError("");
     onAnalyze("https://github.com/acme/checkout-service");
   };
+
+  const displayedError = error || serverError;
 
   return (
     <div className="bg-grid relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6">
@@ -69,7 +71,7 @@ export default function RepositoryInput({ onAnalyze }) {
               />
             </div>
           </div>
-          {error && <p className="mt-2 text-xs text-[var(--color-risk-high)]">{error}</p>}
+          {displayedError && <p className="mt-2 text-xs text-[var(--color-risk-high)]">{displayedError}</p>}
 
           <button
             type="submit"

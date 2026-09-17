@@ -72,3 +72,20 @@ async def get_file_content(owner: str, name: str, path: str, ref: str) -> Option
         raise HTTPException(status_code=502, detail=f"Unexpected encoding for {path}.")
 
     return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
+
+
+async def list_directory(owner: str, name: str, path: str, ref: str) -> Optional[list[dict]]:
+    """Returns the Contents API listing for a directory (each item has at
+    least "name" and "type"), or None if the path doesn't exist or isn't a
+    directory.
+    """
+    resp = await _get(f"{GITHUB_API}/repos/{owner}/{name}/contents/{path}", params={"ref": ref})
+    _raise_for_common_errors(resp, f"listing {path or '/'}")
+
+    if resp.status_code == 404:
+        return None
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"GitHub API error ({resp.status_code}) listing {path or '/'}.")
+
+    data = resp.json()
+    return data if isinstance(data, list) else None

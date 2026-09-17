@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function RepositoryInput({ onAnalyze, serverError }) {
+export default function RepositoryInput({ onAnalyze, onDemo, serverError }) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
 
@@ -23,7 +23,7 @@ export default function RepositoryInput({ onAnalyze, serverError }) {
   const handleDemo = () => {
     setUrl("https://github.com/acme/checkout-service");
     setError("");
-    onAnalyze("https://github.com/acme/checkout-service");
+    onDemo();
   };
 
   const displayedError = error || serverError;

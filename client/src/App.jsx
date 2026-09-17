@@ -2,7 +2,7 @@ import { useState } from "react";
 import RepositoryInput from "./components/RepositoryInput";
 import AnalysisLoader from "./components/AnalysisLoader";
 import Dashboard from "./components/Dashboard";
-import { analyzeRepository } from "./services/api";
+import { analyzeRepository, getDemoRepository } from "./services/api";
 
 // App states: "input" -> "analyzing" -> "dashboard"
 export default function App() {
@@ -37,13 +37,28 @@ export default function App() {
     }
   };
 
+  const handleDemo = async () => {
+    setRepoUrl("https://github.com/acme/checkout-service");
+    setAnalysisError("");
+    setStage("analyzing");
+
+    // Never touches the network -- this is a fictitious repo that exists
+    // purely to showcase the product with a curated dependency graph.
+    const minDisplay = new Promise((resolve) => setTimeout(resolve, 1800));
+    const [data] = await Promise.all([getDemoRepository(), minDisplay]);
+
+    const packagesById = Object.fromEntries(data.packages.map((p) => [p.id, p]));
+    setAnalysis({ repository: data.repository, packages: packagesById, edges: data.edges });
+    setStage("dashboard");
+  };
+
   const handleReset = () => {
     setStage("input");
     setAnalysis(null);
     setRepoUrl("");
   };
 
-  if (stage === "input") return <RepositoryInput onAnalyze={handleAnalyze} serverError={analysisError} />;
+  if (stage === "input") return <RepositoryInput onAnalyze={handleAnalyze} onDemo={handleDemo} serverError={analysisError} />;
   if (stage === "analyzing") return <AnalysisLoader repoUrl={repoUrl} />;
 
   return (

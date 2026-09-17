@@ -141,6 +141,21 @@ export async function analyzeRepository(repoUrl) {
   }
 }
 
+// The curated demo uses a fictitious GitHub URL (acme/checkout-service)
+// that was never meant to hit the real backend -- it exists purely to
+// showcase the product with a hand-picked, interesting dependency graph.
+// It must never touch the network: analyzeRepository() would correctly
+// get a real 404 for it from the backend and (correctly) surface that as
+// an error now that real repo errors aren't silently swallowed anymore.
+export async function getDemoRepository() {
+  await delay(400);
+  return {
+    repository: { ...mockRepository },
+    packages: Object.values(mockPackages),
+    edges: mockEdges,
+  };
+}
+
 export async function getPackage(packageId) {
   if (mockPackages[packageId]) {
     await delay(150);

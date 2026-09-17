@@ -1,0 +1,21 @@
+# Render Blueprint for the ChainBreak API.
+# Deploy: render.com -> New -> Blueprint -> connect this repo -> Apply.
+# After the first deploy, set GITHUB_TOKEN and ALLOWED_ORIGINS in the
+# service's Environment tab (marked sync: false below so Render won't
+# auto-fill them).
+services:
+  - type: web
+    name: chainbreak-api
+    runtime: python
+    plan: free
+    rootDir: server
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
